@@ -1,0 +1,25 @@
+{
+  "entries": [
+    {
+      "id": "1767229686919-ac4fesq",
+      "request": {
+        "id": "1",
+        "method": "GET",
+        "path": "/users",
+        "url": "",
+        "query": {},
+        "headers": {},
+        "timestamp": 1767229686919
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "name": "Alice"
+        },
+        "timestamp": 1767229686919
+      },
+      "createdAt": 1767229686919
+    }
+  ]
+}
