@@ -1,0 +1,25 @@
+{
+  "entries": [
+    {
+      "id": "1767262506848-7i9ecit",
+      "request": {
+        "id": "1",
+        "method": "GET",
+        "path": "/hello",
+        "url": "/hello",
+        "query": {},
+        "headers": {},
+        "timestamp": 1767262506848
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "message": "Hello World!"
+        },
+        "timestamp": 1767262506848
+      },
+      "createdAt": 1767262506848
+    }
+  ]
+}
