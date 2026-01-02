@@ -1,7 +1,7 @@
 import { Low } from 'lowdb';
 import { JSONFile } from 'lowdb/node';
 import { mkdir } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import type { RequestRecord, ResponseRecord, RecordedEntry } from '../types/index.js';
 import { type Storage, generateId } from './base.js';
 
@@ -14,7 +14,8 @@ export class LowDBStorage implements Storage {
   private path: string;
 
   constructor(path: string = './mocks/db.json') {
-    this.path = path;
+    // Use absolute path to avoid issues with temp file paths
+    this.path = resolve(path);
   }
 
   async init(): Promise<void> {

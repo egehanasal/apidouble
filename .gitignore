@@ -34,3 +34,6 @@ apidouble.db
 # Temporary files
 tmp/
 temp/
+
+# Test directories
+test-*/

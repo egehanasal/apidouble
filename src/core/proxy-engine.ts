@@ -46,6 +46,16 @@ export class ProxyEngine {
       changeOrigin: true,
       selfHandleResponse: true, // We'll handle response ourselves to record it
       on: {
+        proxyReq: (proxyReq, req) => {
+          // Re-stream the body since Express already consumed it
+          const expressReq = req as Request;
+          if (expressReq.body && Object.keys(expressReq.body).length > 0) {
+            const bodyData = JSON.stringify(expressReq.body);
+            proxyReq.setHeader('Content-Type', 'application/json');
+            proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
+            proxyReq.write(bodyData);
+          }
+        },
         proxyRes: (proxyRes, req, res) => {
           this.handleProxyResponse(proxyRes, req as Request, res as Response);
         },
