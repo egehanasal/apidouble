@@ -9,7 +9,10 @@ import type {
 } from '../types/index.js';
 import type { Storage } from '../storage/base.js';
 import { LowDBStorage } from '../storage/lowdb.adapter.js';
+import { SQLiteStorage } from '../storage/sqlite.adapter.js';
 import { ProxyEngine } from './proxy-engine.js';
+import type { InterceptHandler, Interceptor } from './interceptor.js';
+import { ChaosEngine, type LatencyConfig, type ErrorConfig } from '../chaos/index.js';
 
 export type RouteHandler = (req: {
   params: Record<string, string>;
@@ -32,6 +35,7 @@ export class ApiDouble {
   private server: Server | null = null;
   private storage: Storage;
   private engine: ProxyEngine | null = null;
+  private chaos: ChaosEngine;
   private events: ApiDoubleEvents;
   private customRoutes: Map<string, { method: string; path: string; handler: RouteHandler }> = new Map();
   private isRunning = false;
@@ -50,6 +54,11 @@ export class ApiDouble {
     this.events = events;
     this.app = express();
     this.storage = this.createStorage();
+    this.chaos = new ChaosEngine({
+      enabled: this.config.chaos?.enabled ?? false,
+      latency: this.config.chaos?.latency,
+      errorRate: this.config.chaos?.errorRate,
+    });
 
     this.setupMiddleware();
   }
@@ -64,7 +73,10 @@ export class ApiDouble {
       return new LowDBStorage(path);
     }
 
-    // SQLite will be added in v1.1
+    if (type === 'sqlite') {
+      return new SQLiteStorage(path);
+    }
+
     throw new Error(`Unsupported storage type: ${type}`);
   }
 
@@ -86,6 +98,15 @@ export class ApiDouble {
       };
       this.app.use(cors(corsOptions));
     }
+
+    // Chaos middleware (applied to non-admin routes via custom check)
+    this.app.use((req, res, next) => {
+      // Skip chaos for admin endpoints
+      if (req.path.startsWith('/__')) {
+        return next();
+      }
+      this.chaos.middleware()(req, res, next);
+    });
 
     // Health check endpoint
     this.app.get('/__health', (_req: Request, res: Response) => {
@@ -355,5 +376,100 @@ export class ApiDouble {
    */
   getApp(): Express {
     return this.app;
+  }
+
+  /**
+   * Add an intercept rule for modifying responses (intercept mode)
+   * @param method HTTP method to match (or '*' for all)
+   * @param path URL path pattern (supports :params)
+   * @param handler Function to modify the response
+   * @returns Rule ID for later removal
+   */
+  intercept(method: string, path: string, handler: InterceptHandler): string {
+    if (!this.engine) {
+      throw new Error('Cannot add intercept rules before server starts');
+    }
+    return this.engine.intercept(method, path, handler);
+  }
+
+  /**
+   * Remove an intercept rule
+   * @param id Rule ID returned from intercept()
+   */
+  removeIntercept(id: string): boolean {
+    if (!this.engine) {
+      return false;
+    }
+    return this.engine.removeIntercept(id);
+  }
+
+  /**
+   * Get the interceptor instance for advanced configuration
+   */
+  getInterceptor(): Interceptor | null {
+    return this.engine?.getInterceptor() ?? null;
+  }
+
+  /**
+   * Enable chaos mode
+   */
+  enableChaos(): void {
+    this.chaos.enable();
+  }
+
+  /**
+   * Disable chaos mode
+   */
+  disableChaos(): void {
+    this.chaos.disable();
+  }
+
+  /**
+   * Check if chaos is enabled
+   */
+  isChaosEnabled(): boolean {
+    return this.chaos.isEnabled();
+  }
+
+  /**
+   * Set chaos latency
+   */
+  setChaosLatency(config: LatencyConfig | null): void {
+    this.chaos.setLatency(config);
+  }
+
+  /**
+   * Add a chaos latency rule for specific routes
+   */
+  addChaosLatencyRule(method: string, path: string, config: LatencyConfig): string {
+    return this.chaos.addLatencyRule(method, path, config);
+  }
+
+  /**
+   * Set chaos error rate
+   */
+  setChaosErrorRate(rate: number, status?: number, message?: string): void {
+    this.chaos.setErrorRate(rate, status, message);
+  }
+
+  /**
+   * Add a chaos error rule for specific routes
+   */
+  addChaosErrorRule(method: string, path: string, config: ErrorConfig): string {
+    return this.chaos.addErrorRule(method, path, config);
+  }
+
+  /**
+   * Get chaos statistics
+   */
+  getChaosStats(): ReturnType<ChaosEngine['getStats']> {
+    return this.chaos.getStats();
+  }
+
+  /**
+   * Get the chaos engine instance for advanced configuration
+   */
+  getChaosEngine(): ChaosEngine {
+    return this.chaos;
   }
 }

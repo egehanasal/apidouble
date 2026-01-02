@@ -9,6 +9,7 @@ import type {
 import type { Storage } from '../storage/base.js';
 import { RequestMatcher } from './matcher.js';
 import { generateId } from '../storage/base.js';
+import { Interceptor, type InterceptHandler } from './interceptor.js';
 
 export interface ProxyEngineConfig {
   mode: ServerMode;
@@ -24,10 +25,13 @@ export class ProxyEngine {
   private config: ProxyEngineConfig;
   private matcher: RequestMatcher;
   private proxyMiddleware: RequestHandler | null = null;
+  private interceptor: Interceptor;
+  private pendingRequests: Map<string, Request> = new Map();
 
   constructor(config: ProxyEngineConfig) {
     this.config = config;
     this.matcher = new RequestMatcher(config.matchingConfig);
+    this.interceptor = new Interceptor();
 
     if (config.mode === 'proxy' || config.mode === 'intercept') {
       if (!config.target) {
@@ -35,6 +39,27 @@ export class ProxyEngine {
       }
       this.proxyMiddleware = this.createProxy(config.target);
     }
+  }
+
+  /**
+   * Add an intercept rule for modifying responses
+   */
+  intercept(method: string, path: string, handler: InterceptHandler): string {
+    return this.interceptor.addRule(method, path, handler);
+  }
+
+  /**
+   * Remove an intercept rule
+   */
+  removeIntercept(id: string): boolean {
+    return this.interceptor.removeRule(id);
+  }
+
+  /**
+   * Get the interceptor instance
+   */
+  getInterceptor(): Interceptor {
+    return this.interceptor;
   }
 
   /**
@@ -49,6 +74,12 @@ export class ProxyEngine {
         proxyReq: (proxyReq, req) => {
           // Re-stream the body since Express already consumed it
           const expressReq = req as Request;
+
+          // Store request for intercept mode
+          const requestId = generateId();
+          (expressReq as Request & { _interceptId?: string })._interceptId = requestId;
+          this.pendingRequests.set(requestId, expressReq);
+
           if (expressReq.body && Object.keys(expressReq.body).length > 0) {
             const bodyData = JSON.stringify(expressReq.body);
             proxyReq.setHeader('Content-Type', 'application/json');
@@ -96,12 +127,36 @@ export class ProxyEngine {
 
       // Create request/response records
       const requestRecord = this.createRequestRecord(req);
-      const responseRecord: ResponseRecord = {
+      let responseRecord: ResponseRecord = {
         status: proxyRes.statusCode ?? 200,
         headers: this.flattenHeaders(proxyRes.headers),
         body: parsedBody,
         timestamp: Date.now(),
       };
+
+      // Get original Express request for intercept context
+      const interceptId = (req as Request & { _interceptId?: string })._interceptId;
+      const originalReq = interceptId ? this.pendingRequests.get(interceptId) : req;
+      if (interceptId) {
+        this.pendingRequests.delete(interceptId);
+      }
+
+      // Apply intercept rules in intercept mode
+      if (this.config.mode === 'intercept') {
+        const rule = this.interceptor.findMatchingRule(req.method, req.path);
+        if (rule && originalReq) {
+          try {
+            responseRecord = await this.interceptor.applyRule(
+              rule,
+              responseRecord,
+              requestRecord,
+              originalReq
+            );
+          } catch (error) {
+            console.error('Intercept rule error:', error);
+          }
+        }
+      }
 
       // Save to storage
       try {
@@ -121,7 +176,12 @@ export class ProxyEngine {
         }
       }
 
-      res.send(body);
+      // Send the (possibly modified) body
+      if (typeof responseRecord.body === 'string') {
+        res.send(responseRecord.body);
+      } else {
+        res.json(responseRecord.body);
+      }
     });
   }
 
