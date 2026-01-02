@@ -37,6 +37,8 @@ Frontend developers in large projects frequently face these obstacles:
 - **Admin Endpoints** — Health checks, status, and mock management via HTTP
 - **Programmatic API** — Full control via TypeScript/JavaScript
 - **CLI Interface** — Easy command-line usage for quick setup
+- **Chaos Engineering** — Simulate latency and random failures for resilience testing
+- **Response Interception** — Modify responses on-the-fly with custom handlers
 
 ---
 
@@ -200,6 +202,189 @@ Supported patterns:
 
 ---
 
+## Intercept Mode
+
+Intercept mode lets you modify responses from the real API before returning them to the client. This is useful for testing edge cases, injecting errors, or transforming data.
+
+```typescript
+import { ApiDouble, InterceptHelpers } from 'apidouble';
+
+const server = new ApiDouble({
+  port: 3001,
+  mode: 'intercept',
+  target: 'https://api.example.com'
+});
+
+await server.start();
+
+// Modify specific endpoints
+server.intercept('GET', '/api/users/:id', (response, context) => ({
+  ...response,
+  body: {
+    ...response.body,
+    intercepted: true,
+    userId: context.params.id
+  }
+}));
+
+// Simulate slow responses
+server.intercept('GET', '/api/slow/*', InterceptHelpers.delay(2000));
+
+// Change status codes
+server.intercept('POST', '/api/items', InterceptHelpers.setStatus(201));
+
+// Simulate errors
+server.intercept('DELETE', '/api/protected/*',
+  InterceptHelpers.simulateError(403, 'Access denied')
+);
+
+// Chain multiple modifications
+server.intercept('GET', '/api/data', InterceptHelpers.chain(
+  InterceptHelpers.delay(500),
+  InterceptHelpers.setHeaders({ 'X-Modified': 'true' }),
+  InterceptHelpers.modifyBody((body) => ({ ...body, modified: true }))
+));
+```
+
+### Available Intercept Helpers
+
+| Helper | Description |
+|--------|-------------|
+| `delay(ms)` | Add artificial latency |
+| `replaceBody(newBody)` | Replace the entire response body |
+| `modifyBody(fn)` | Transform the response body |
+| `setStatus(code)` | Change the HTTP status code |
+| `setHeaders(headers)` | Add or modify response headers |
+| `simulateError(status, message)` | Return an error response |
+| `chain(...handlers)` | Combine multiple handlers |
+
+---
+
+## Chaos Engineering
+
+Test your application's resilience by simulating network issues and failures.
+
+### Basic Usage
+
+```typescript
+import { ApiDouble, ChaosPresets } from 'apidouble';
+
+// Using presets
+const server = new ApiDouble({
+  port: 3001,
+  mode: 'mock',
+  chaos: ChaosPresets.flaky() // 5% errors + 100-300ms latency
+});
+
+await server.start();
+
+// Or configure manually
+server.enableChaos();
+server.setChaosLatency({ min: 100, max: 500 });
+server.setChaosErrorRate(10); // 10% of requests fail
+```
+
+### Per-Route Chaos Rules
+
+```typescript
+// Add latency to specific routes
+server.addChaosLatencyRule('GET', '/api/slow/*', { min: 1000, max: 3000 });
+
+// Inject errors for specific endpoints
+server.addChaosErrorRule('POST', '/api/payments/*', {
+  rate: 20,       // 20% failure rate
+  status: 503,
+  message: 'Service temporarily unavailable'
+});
+```
+
+### Chaos Presets
+
+| Preset | Latency | Error Rate | Use Case |
+|--------|---------|------------|----------|
+| `slowNetwork()` | 100-500ms | 0% | Test loading states |
+| `verySlowNetwork()` | 500-2000ms | 0% | Test timeout handling |
+| `unreliable()` | 0ms | 10% | Test error recovery |
+| `flaky()` | 100-300ms | 5% | Realistic unstable API |
+| `stress()` | 200-1000ms | 20% | Stress testing |
+
+### Error Presets
+
+```typescript
+import { ErrorPresets } from 'apidouble';
+
+server.addChaosErrorRule('*', '/api/*', ErrorPresets.serverError(10));
+server.addChaosErrorRule('*', '/api/*', ErrorPresets.rateLimited(5));
+server.addChaosErrorRule('*', '/api/*', ErrorPresets.timeout(3));
+```
+
+### Monitoring Chaos
+
+```typescript
+const stats = server.getChaosStats();
+console.log(stats);
+// {
+//   enabled: true,
+//   requestsProcessed: 150,
+//   errorsInjected: 15,
+//   totalLatencyAdded: 45000,
+//   averageLatency: 300
+// }
+```
+
+---
+
+## Storage Options
+
+### LowDB (Default)
+
+JSON file-based storage, ideal for development and small projects:
+
+```typescript
+const server = new ApiDouble({
+  storage: {
+    type: 'lowdb',
+    path: './mocks/db.json'
+  }
+});
+```
+
+### SQLite
+
+Better for larger datasets and concurrent access:
+
+```typescript
+const server = new ApiDouble({
+  storage: {
+    type: 'sqlite',
+    path: './mocks/apidouble.db'
+  }
+});
+```
+
+SQLite storage provides additional query capabilities:
+
+```typescript
+import { SQLiteStorage } from 'apidouble';
+
+const storage = new SQLiteStorage('./mocks/apidouble.db');
+await storage.init();
+
+// Search by method and path pattern
+const results = await storage.search('GET', '/api/users/*');
+
+// Get entries within a time range
+const recent = await storage.getByTimeRange(
+  Date.now() - 3600000, // 1 hour ago
+  Date.now()
+);
+
+// Don't forget to close when done
+storage.close();
+```
+
+---
+
 ## Use Cases
 
 ### 1. Offline Development
@@ -248,26 +433,58 @@ apidouble import ./demo-data.json
 apidouble start --mode mock --port 3001
 ```
 
+### 4. Resilience Testing
+
+Test how your frontend handles failures and slow responses:
+
+```typescript
+import { ApiDouble, ChaosPresets, ErrorPresets } from 'apidouble';
+
+const server = new ApiDouble({
+  port: 3001,
+  mode: 'mock',
+  chaos: ChaosPresets.flaky()
+});
+
+await server.start();
+
+// Test specific failure scenarios
+server.addChaosErrorRule('POST', '/api/checkout', ErrorPresets.serverError(50));
+server.addChaosLatencyRule('GET', '/api/products', { min: 2000, max: 5000 });
+
+// Run your tests to verify:
+// - Loading states appear correctly
+// - Error messages are user-friendly
+// - Retry logic works as expected
+// - Timeouts are handled gracefully
+```
+
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      ApiDouble Server                       │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│   ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    │
-│   │   Frontend  │───>│   Proxy     │───>│   Backend   │    │
-│   │   App       │<───│   Engine    │<───│   API       │    │
-│   └─────────────┘    └──────┬──────┘    └─────────────┘    │
-│                             │                               │
-│                      ┌──────▼──────┐                        │
-│                      │   Storage   │                        │
-│                      │   Layer     │                        │
-│                      └─────────────┘                        │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────┐
+│                        ApiDouble Server                           │
+├───────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│   ┌─────────────┐    ┌─────────────┐    ┌─────────────┐          │
+│   │   Frontend  │───>│   Chaos     │───>│   Proxy     │──────┐   │
+│   │   App       │<───│   Engine    │<───│   Engine    │<──┐  │   │
+│   └─────────────┘    └─────────────┘    └──────┬──────┘   │  │   │
+│                       (latency/errors)         │          │  │   │
+│                                                │          │  │   │
+│                      ┌─────────────┐    ┌──────▼──────┐   │  │   │
+│                      │ Interceptor │    │   Backend   │───┘  │   │
+│                      │  (modify)   │    │     API     │      │   │
+│                      └──────┬──────┘    └─────────────┘      │   │
+│                             │                                │   │
+│                      ┌──────▼──────┐                         │   │
+│                      │   Storage   │─────────────────────────┘   │
+│                      │ LowDB/SQLite│                             │
+│                      └─────────────┘                             │
+│                                                                   │
+└───────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -280,13 +497,18 @@ apidouble/
 │   ├── core/
 │   │   ├── server.ts          # Main ApiDouble class
 │   │   ├── proxy-engine.ts    # Request handling and forwarding
-│   │   └── matcher.ts         # Smart request matching
+│   │   ├── matcher.ts         # Smart request matching
+│   │   └── interceptor.ts     # Response interception
 │   ├── storage/
 │   │   ├── base.ts            # Storage interface
-│   │   └── lowdb.adapter.ts   # JSON-based storage
+│   │   ├── lowdb.adapter.ts   # JSON-based storage
+│   │   └── sqlite.adapter.ts  # SQLite storage
+│   ├── chaos/
+│   │   ├── index.ts           # Chaos engine
+│   │   ├── latency.ts         # Latency simulation
+│   │   └── error-injector.ts  # Error injection
 │   ├── cli/
-│   │   ├── index.ts           # CLI entry point
-│   │   └── commands.ts        # CLI command definitions
+│   │   └── index.ts           # CLI entry point
 │   ├── config/
 │   │   └── loader.ts          # Configuration loading
 │   ├── types/
@@ -325,14 +547,16 @@ npm run demo:proxy
 | Runtime | Node.js + TypeScript | Type safety and modern JS features |
 | Server | Express.js | HTTP server and routing |
 | Proxy | http-proxy-middleware | Request forwarding |
-| Storage | LowDB | JSON-based persistence |
+| Storage | LowDB / better-sqlite3 | JSON or SQLite persistence |
 | CLI | Commander.js | Command-line interface |
+| Testing | Vitest | Unit and integration tests |
+| Build | tsup | Fast TypeScript bundling |
 
 ---
 
 ## Roadmap
 
-### v1.0 — Core Features (Complete)
+### v1.0 — Core Features ✅
 - [x] Proxy mode (record)
 - [x] Mock mode (playback)
 - [x] LowDB storage
@@ -341,16 +565,17 @@ npm run demo:proxy
 - [x] Admin endpoints
 - [x] Configuration file support
 
-### v1.1 — Advanced Features
-- [ ] Intercept mode (response modification)
-- [ ] Chaos engine (latency simulation)
-- [ ] SQLite storage option
-- [ ] Body-aware request matching
+### v1.1 — Advanced Features ✅
+- [x] Intercept mode (response modification)
+- [x] Chaos engine (latency + error injection)
+- [x] SQLite storage option
+- [x] Body-aware request matching
 
 ### v1.2 — Developer Experience
 - [ ] Admin dashboard UI
 - [ ] Faker.js integration for dynamic data
 - [ ] Hot reload for routes
+- [ ] Schema inference from recorded responses
 
 ### v2.0 — Enterprise Features
 - [ ] WebSocket support
