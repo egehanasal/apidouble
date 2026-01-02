@@ -48,9 +48,10 @@ export class ErrorInjector {
    */
   setDefault(config: ErrorConfig | null): void {
     if (config) {
-      this.validateConfig(config);
+      this.defaultError = this.validateConfig(config);
+    } else {
+      this.defaultError = null;
     }
-    this.defaultError = config;
   }
 
   /**
@@ -64,14 +65,14 @@ export class ErrorInjector {
    * Add an error injection rule for specific routes
    */
   addRule(method: string, path: string, error: ErrorConfig): string {
-    this.validateConfig(error);
+    const normalizedError = this.validateConfig(error);
 
     const id = `error-${++this.ruleCounter}`;
     this.rules.set(id, {
       id,
       method: method.toUpperCase(),
       path,
-      error,
+      error: normalizedError,
       enabled: true,
     });
     return id;
@@ -143,15 +144,25 @@ export class ErrorInjector {
   }
 
   /**
-   * Validate error configuration
+   * Validate and normalize error configuration
    */
-  private validateConfig(config: ErrorConfig): void {
-    if (config.rate < 0 || config.rate > 100) {
+  private validateConfig(config: ErrorConfig): ErrorConfig {
+    // Provide defaults for missing fields
+    const normalized: ErrorConfig = {
+      rate: config.rate ?? 10,
+      status: config.status ?? 500,
+      message: config.message ?? 'Chaos-induced error',
+      details: config.details,
+    };
+
+    if (normalized.rate < 0 || normalized.rate > 100) {
       throw new Error('Error rate must be between 0 and 100');
     }
-    if (config.status < 400 || config.status > 599) {
+    if (normalized.status < 400 || normalized.status > 599) {
       throw new Error('Error status must be between 400 and 599');
     }
+
+    return normalized;
   }
 
   /**
