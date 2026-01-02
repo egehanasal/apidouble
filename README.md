@@ -2,6 +2,11 @@
 
 **API Mocking & Traffic Interception Tool for Developers**
 
+![Version](https://img.shields.io/badge/version-1.2.0-blue)
+![Tests](https://img.shields.io/badge/tests-282%20passing-green)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)
+![Node](https://img.shields.io/badge/Node-18%2B-green)
+
 A proxy tool with smart record-and-playback capabilities that eliminates "API not ready" and "backend is down" blockers during frontend development.
 
 ---
@@ -163,6 +168,9 @@ When the server is running, these endpoints are available:
 | `/__mocks` | DELETE | Clear all mocks |
 | `/__mocks/:id` | DELETE | Delete a specific mock |
 | `/__mode` | POST | Switch between modes |
+| `/__admin` | GET | Web-based admin dashboard |
+| `/__chaos` | GET | Get chaos engineering stats |
+| `/__chaos` | POST | Enable/disable chaos mode |
 
 Example:
 
@@ -182,6 +190,17 @@ curl -X POST http://localhost:3001/__mode \
 curl -X POST http://localhost:3001/__mode \
   -H "Content-Type: application/json" \
   -d '{"mode": "proxy", "target": "https://api.example.com"}'
+
+# Get chaos stats
+curl http://localhost:3001/__chaos
+
+# Enable chaos mode
+curl -X POST http://localhost:3001/__chaos \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": true}'
+
+# Open admin dashboard in browser
+open http://localhost:3001/__admin
 ```
 
 ---
@@ -648,10 +667,16 @@ apidouble/
 │   │   ├── index.ts           # Chaos engine
 │   │   ├── latency.ts         # Latency simulation
 │   │   └── error-injector.ts  # Error injection
+│   ├── generators/
+│   │   ├── faker.service.ts   # Faker.js integration
+│   │   └── schema-inferrer.ts # TypeScript schema inference
+│   ├── dashboard/
+│   │   └── index.ts           # Admin dashboard UI
 │   ├── cli/
 │   │   └── index.ts           # CLI entry point
 │   ├── config/
-│   │   └── loader.ts          # Configuration loading
+│   │   ├── loader.ts          # Configuration loading
+│   │   └── hot-reload.ts      # Config file watching
 │   ├── types/
 │   │   └── index.ts           # TypeScript interfaces
 │   └── index.ts               # Main export
@@ -690,6 +715,8 @@ npm run demo:proxy
 | Proxy | http-proxy-middleware | Request forwarding |
 | Storage | LowDB / better-sqlite3 | JSON or SQLite persistence |
 | CLI | Commander.js | Command-line interface |
+| Mock Data | Faker.js | Dynamic fake data generation |
+| File Watching | chokidar | Hot reload for config files |
 | Testing | Vitest | Unit and integration tests |
 | Build | tsup | Fast TypeScript bundling |
 
