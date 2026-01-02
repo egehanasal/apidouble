@@ -3,7 +3,7 @@
 import { Command } from 'commander';
 import { ApiDouble } from '../core/server.js';
 import { LowDBStorage } from '../storage/lowdb.adapter.js';
-import type { ServerMode } from '../types/index.js';
+import { loadConfig, validateConfig, findConfigFile } from '../config/index.js';
 
 const program = new Command();
 
@@ -39,78 +39,72 @@ program
 program
   .command('start')
   .description('Start the ApiDouble server')
-  .option('-p, --port <port>', 'Server port', '3001')
-  .option('-m, --mode <mode>', 'Server mode (proxy|mock|intercept)', 'mock')
+  .option('-p, --port <port>', 'Server port')
+  .option('-m, --mode <mode>', 'Server mode (proxy|mock|intercept)')
   .option('-t, --target <url>', 'Target API URL (required for proxy/intercept mode)')
-  .option('-s, --storage <path>', 'Storage file path', './mocks/db.json')
+  .option('-s, --storage <path>', 'Storage file path')
   .option('-c, --config <path>', 'Config file path')
   .option('--no-cors', 'Disable CORS')
-  .option('--matching <strategy>', 'Matching strategy (exact|smart|fuzzy)', 'smart')
+  .option('--matching <strategy>', 'Matching strategy (exact|smart|fuzzy)')
   .action(async (options) => {
-    const port = parseInt(options.port, 10);
-    const mode = options.mode as ServerMode;
-
-    // Validate mode
-    if (!['proxy', 'mock', 'intercept'].includes(mode)) {
-      log(`Error: Invalid mode "${mode}". Use: proxy, mock, or intercept`, 'red');
-      process.exit(1);
-    }
-
-    // Validate target for proxy/intercept mode
-    if ((mode === 'proxy' || mode === 'intercept') && !options.target) {
-      log(`Error: Target URL is required for ${mode} mode`, 'red');
-      log('  Use: apidouble start --mode proxy --target https://api.example.com', 'dim');
-      process.exit(1);
-    }
-
-    // Validate port
-    if (isNaN(port) || port < 1 || port > 65535) {
-      log(`Error: Invalid port "${options.port}"`, 'red');
-      process.exit(1);
-    }
-
-    console.log('');
-    log('  ApiDouble', 'bright');
-    console.log('');
-
-    const server = new ApiDouble(
-      {
-        port,
-        mode,
+    try {
+      // Load config from file + CLI options
+      const config = await loadConfig({
+        port: options.port,
+        mode: options.mode,
         target: options.target,
-        storage: { type: 'lowdb', path: options.storage },
-        cors: { enabled: options.cors !== false },
-        matching: { strategy: options.matching },
-      },
-      {
+        storage: options.storage,
+        config: options.config,
+        cors: options.cors,
+        matching: options.matching,
+      });
+
+      // Validate config
+      const validation = validateConfig(config);
+      if (!validation.valid) {
+        for (const error of validation.errors) {
+          log(`Error: ${error}`, 'red');
+        }
+        process.exit(1);
+      }
+
+      // Check if config file was used
+      const configFile = options.config ?? await findConfigFile();
+
+      console.log('');
+      log('  ApiDouble', 'bright');
+      console.log('');
+
+      const server = new ApiDouble(config, {
         onRequest: (req) => {
           const timestamp = new Date().toLocaleTimeString();
           console.log(
             `  ${colors.dim}${timestamp}${colors.reset} ${colors.magenta}${req.method}${colors.reset} ${req.path}`
           );
         },
-      }
-    );
+      });
 
-    try {
       await server.start();
 
       console.log(`  ${colors.green}Server started${colors.reset}`);
       console.log('');
-      logInfo('Mode', mode);
-      logInfo('Port', String(port));
-      if (options.target) {
-        logInfo('Target', options.target);
+      if (configFile) {
+        logInfo('Config', configFile);
       }
-      logInfo('Storage', options.storage);
-      logInfo('Matching', options.matching);
-      logInfo('CORS', options.cors !== false ? 'enabled' : 'disabled');
+      logInfo('Mode', config.mode);
+      logInfo('Port', String(config.port));
+      if (config.target) {
+        logInfo('Target', config.target);
+      }
+      logInfo('Storage', config.storage.path);
+      logInfo('Matching', config.matching?.strategy ?? 'smart');
+      logInfo('CORS', config.cors?.enabled ? 'enabled' : 'disabled');
       console.log('');
-      log(`  Listening on http://localhost:${port}`, 'green');
+      log(`  Listening on http://localhost:${config.port}`, 'green');
       console.log('');
-      logInfo('Health', `http://localhost:${port}/__health`);
-      logInfo('Status', `http://localhost:${port}/__status`);
-      logInfo('Mocks', `http://localhost:${port}/__mocks`);
+      logInfo('Health', `http://localhost:${config.port}/__health`);
+      logInfo('Status', `http://localhost:${config.port}/__status`);
+      logInfo('Mocks', `http://localhost:${config.port}/__mocks`);
       console.log('');
       log('  Press Ctrl+C to stop', 'dim');
       console.log('');
