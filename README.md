@@ -1,46 +1,256 @@
 # ApiDouble
 
-**Developer Productivity Tool for API Mocking & Traffic Interception**
+**API Mocking & Traffic Interception Tool for Developers**
 
-Frontend geliştirme sürecinde "API henüz hazır değil" veya "Backend test ortamı çöktü" problemlerine son veren, akıllı kayıt-oynatma (record & playback) mekanizmasına sahip bir proxy aracı.
-
----
-
-## Problem
-
-Büyük kurumsal projelerde frontend geliştiricileri sıklıkla şu engellerle karşılaşır:
-
-- Backend API'leri henüz hazır değil
-- Test ortamları kararsız veya erişilemez durumda
-- Edge case ve hata senaryolarını test etmek zor
-- API değişikliklerinde frontend'in etkilenmesi
-
-**ApiDouble** bu tıkanıklıkları (bottlenecks) ortadan kaldırarak geliştirici üretkenliğini artırır.
+A proxy tool with smart record-and-playback capabilities that eliminates "API not ready" and "backend is down" blockers during frontend development.
 
 ---
 
-## Özellikler
+## The Problem
 
-### Çekirdek Modlar
+Frontend developers in large projects frequently face these obstacles:
 
-| Mod | Açıklama |
-|-----|----------|
-| **🔴 Proxy (Record)** | İstekleri gerçek backend'e iletir, yanıtları kaydeder |
-| **🟢 Mock (Playback)** | Kaydedilmiş yanıtları döner, backend'e ihtiyaç duymaz |
-| **🟡 Intercept (Modify)** | Yanıtları frontend'e iletmeden önce değiştirir |
+- Backend APIs are not ready yet
+- Test environments are unstable or unreachable
+- Testing edge cases and error scenarios is difficult
+- API changes break frontend development flow
 
-### Gelişmiş Özellikler
-
-- **🎲 Chaos Engine** — Gerçekçi gecikme simülasyonu ile yavaş ağ koşullarını test edin
-- **🌱 Dynamic Data Seeding** — Faker.js ile akıllı, bağlama uygun sahte veri üretimi
-- **🔍 Smart Request Matching** — URL, header, query params ve body bazlı akıllı eşleştirme
-- **🌐 Automatic CORS Handling** — Cross-origin sorunlarını otomatik çözüm
-- **📊 Admin Dashboard** — Kaydedilen trafiği görselleştiren web arayüzü
-- **⚡ Hot Reload** — Çalışma anında yeni route tanımlama
+**ApiDouble** removes these bottlenecks by letting you record real API responses and replay them offline, or define custom mock responses programmatically.
 
 ---
 
-## Mimari
+## Features
+
+### Operating Modes
+
+| Mode | Description |
+|------|-------------|
+| **Proxy (Record)** | Forwards requests to the real backend and records responses |
+| **Mock (Playback)** | Returns recorded responses without needing the backend |
+| **Intercept (Modify)** | Modifies responses before returning them to the client |
+
+### Core Capabilities
+
+- **Smart Request Matching** — Matches requests by URL patterns, recognizing IDs and UUIDs
+- **Multiple Storage Options** — JSON-based (LowDB) or SQLite storage
+- **Automatic CORS Handling** — Solves cross-origin issues automatically
+- **Admin Endpoints** — Health checks, status, and mock management via HTTP
+- **Programmatic API** — Full control via TypeScript/JavaScript
+- **CLI Interface** — Easy command-line usage for quick setup
+
+---
+
+## Installation
+
+```bash
+# Global installation
+npm install -g apidouble
+
+# Or as a project dependency
+npm install --save-dev apidouble
+```
+
+---
+
+## Quick Start
+
+### CLI Usage
+
+```bash
+# Start in proxy mode (records requests)
+apidouble start --mode proxy --target https://api.example.com --port 3001
+
+# Start in mock mode (replays recorded responses)
+apidouble start --mode mock --port 3001
+
+# List recorded mocks
+apidouble list
+
+# Export mocks to a file
+apidouble export ./mocks-backup.json
+
+# Import mocks from a file
+apidouble import ./mocks-backup.json
+
+# Clear all recorded mocks
+apidouble clear
+```
+
+### Programmatic Usage
+
+```typescript
+import { ApiDouble } from 'apidouble';
+
+const server = new ApiDouble({
+  port: 3001,
+  mode: 'proxy',
+  target: 'https://api.example.com',
+  storage: {
+    type: 'lowdb',
+    path: './mocks/db.json'
+  }
+});
+
+// Define custom routes
+server.route('GET', '/api/users', () => ({
+  body: [
+    { id: 1, name: 'Alice' },
+    { id: 2, name: 'Bob' }
+  ]
+}));
+
+server.route('GET', '/api/users/:id', (req) => ({
+  body: {
+    id: parseInt(req.params.id),
+    name: `User ${req.params.id}`
+  }
+}));
+
+server.route('POST', '/api/users', (req) => ({
+  status: 201,
+  body: { id: 100, ...req.body, created: true }
+}));
+
+await server.start();
+console.log('Server running on http://localhost:3001');
+```
+
+### Configuration File
+
+Create `apidouble.config.yml` in your project root:
+
+```yaml
+server:
+  port: 3001
+  mode: proxy
+
+target:
+  url: https://api.example.com
+
+storage:
+  type: lowdb
+  path: ./mocks/db.json
+
+cors:
+  enabled: true
+  origins:
+    - http://localhost:3000
+    - http://localhost:5173
+
+matching:
+  strategy: smart  # exact | smart | fuzzy
+```
+
+Then start with:
+
+```bash
+apidouble start --config apidouble.config.yml
+```
+
+---
+
+## Admin Endpoints
+
+When the server is running, these endpoints are available:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/__health` | GET | Health check |
+| `/__status` | GET | Server status and mock count |
+| `/__mocks` | GET | List all recorded mocks |
+| `/__mocks` | DELETE | Clear all mocks |
+| `/__mocks/:id` | DELETE | Delete a specific mock |
+| `/__mode` | POST | Switch between modes |
+
+Example:
+
+```bash
+# Check server health
+curl http://localhost:3001/__health
+
+# List all mocks
+curl http://localhost:3001/__mocks
+
+# Switch to mock mode
+curl -X POST http://localhost:3001/__mode \
+  -H "Content-Type: application/json" \
+  -d '{"mode": "mock"}'
+
+# Switch to proxy mode with target
+curl -X POST http://localhost:3001/__mode \
+  -H "Content-Type: application/json" \
+  -d '{"mode": "proxy", "target": "https://api.example.com"}'
+```
+
+---
+
+## Smart Request Matching
+
+ApiDouble uses intelligent matching to find recorded responses:
+
+1. **Exact Match** — Method + exact URL path
+2. **Smart Match** — Recognizes dynamic segments like IDs, UUIDs, and MongoDB ObjectIds
+
+For example, if you recorded `GET /api/users/123`, a request to `GET /api/users/456` will match and return the same response structure.
+
+Supported patterns:
+- Numeric IDs: `/users/123`, `/posts/456`
+- UUIDs: `/items/550e8400-e29b-41d4-a716-446655440000`
+- MongoDB ObjectIds: `/docs/507f1f77bcf86cd799439011`
+
+---
+
+## Use Cases
+
+### 1. Offline Development
+
+Record API responses once, then develop without network access:
+
+```bash
+# Record responses from real API
+apidouble start --mode proxy --target https://api.prod.com --port 3001
+# Make requests through proxy...
+
+# Later, work offline with recorded responses
+apidouble start --mode mock --port 3001
+```
+
+### 2. Frontend Testing
+
+Create predictable test fixtures:
+
+```typescript
+const server = new ApiDouble({ port: 4000, mode: 'mock' });
+
+server.route('GET', '/api/users', () => ({
+  body: { users: [{ id: 1, name: 'Test User' }] }
+}));
+
+server.route('GET', '/api/error', () => ({
+  status: 500,
+  body: { error: 'Internal Server Error' }
+}));
+
+await server.start();
+// Run your tests against http://localhost:4000
+```
+
+### 3. Demo Environments
+
+Create stable demo environments that don't depend on backend availability:
+
+```bash
+# Export production-like data
+apidouble export ./demo-data.json
+
+# Import for demos
+apidouble import ./demo-data.json
+apidouble start --mode mock --port 3001
+```
+
+---
+
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -48,209 +258,107 @@ Büyük kurumsal projelerde frontend geliştiricileri sıklıkla şu engellerle 
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │   ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    │
-│   │   Frontend  │───▶│   Proxy     │───▶│   Backend   │    │
-│   │   App       │◀───│   Engine    │◀───│   API       │    │
+│   │   Frontend  │───>│   Proxy     │───>│   Backend   │    │
+│   │   App       │<───│   Engine    │<───│   API       │    │
 │   └─────────────┘    └──────┬──────┘    └─────────────┘    │
 │                             │                               │
 │                      ┌──────▼──────┐                        │
 │                      │   Storage   │                        │
 │                      │   Layer     │                        │
-│                      └──────┬──────┘                        │
-│                             │                               │
-│          ┌──────────────────┼──────────────────┐            │
-│          ▼                  ▼                  ▼            │
-│   ┌────────────┐    ┌────────────┐    ┌────────────┐       │
-│   │  Request   │    │  Response  │    │   Rules    │       │
-│   │  Cache     │    │  Cache     │    │   Config   │       │
-│   └────────────┘    └────────────┘    └────────────┘       │
+│                      └─────────────┘                        │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Kurulum
-
-```bash
-# Global kurulum
-npm install -g apidouble
-
-# Veya proje bazlı
-npm install --save-dev apidouble
-```
-
----
-
-## Kullanım
-
-### CLI
-
-```bash
-# Proxy modunda başlat (kayıt yapar)
-apidouble start --mode proxy --target https://api.example.com --port 3001
-
-# Mock modunda başlat (kayıtları oynatır)
-apidouble start --mode mock --port 3001
-
-# Intercept modunda başlat
-apidouble start --mode intercept --target https://api.example.com --port 3001
-```
-
-### Programatik Kullanım
-
-```typescript
-import { ApiDouble } from 'apidouble';
-
-const server = new ApiDouble({
-  port: 3001,
-  target: 'https://api.example.com',
-  mode: 'proxy',
-  storage: {
-    type: 'sqlite',
-    path: './apidouble.db'
-  },
-  chaos: {
-    enabled: true,
-    latency: { min: 100, max: 500 }
-  }
-});
-
-// Dinamik route tanımlama
-server.route('GET', '/api/users/:id', (req) => ({
-  status: 200,
-  body: {
-    id: req.params.id,
-    name: faker.person.fullName(),
-    email: faker.internet.email()
-  }
-}));
-
-// Intercept kuralı
-server.intercept('POST', '/api/orders', (response) => {
-  response.status = 500;
-  response.body = { error: 'Simulated server error' };
-  return response;
-});
-
-server.start();
-```
-
-### Yapılandırma Dosyası
-
-```yaml
-# apidouble.config.yml
-server:
-  port: 3001
-  mode: proxy
-
-target:
-  url: https://api.example.com
-  timeout: 5000
-
-storage:
-  type: lowdb
-  path: ./mocks
-
-cors:
-  enabled: true
-  origins: ['http://localhost:3000']
-
-chaos:
-  enabled: false
-  latency:
-    min: 0
-    max: 0
-  errorRate: 0
-
-matching:
-  strategy: smart  # exact | smart | fuzzy
-  ignoreHeaders:
-    - Authorization
-    - X-Request-Id
-```
-
----
-
-## Teknoloji Stack
-
-| Katman | Teknoloji | Gerekçe |
-|--------|-----------|---------|
-| Runtime | Node.js + TypeScript | Tip güvenliği ve modern JS özellikleri |
-| Server | Express.js | Hızlı prototipleme, geniş ekosistem |
-| Proxy | http-proxy-middleware | Olgun, güvenilir proxy çözümü |
-| Storage | LowDB / SQLite | Sıfır kurulum, taşınabilir |
-| CLI | Commander.js | Zengin CLI deneyimi |
-| Data Generation | Faker.js | Gerçekçi sahte veri |
-| Dashboard | React + Vite | Hızlı, modern admin UI |
-
----
-
-## Proje Yapısı
+## Project Structure
 
 ```
 apidouble/
 ├── src/
 │   ├── core/
-│   │   ├── proxy-engine.ts      # İstek yakalama ve yönlendirme
-│   │   ├── matcher.ts           # Akıllı request eşleştirme
-│   │   └── interceptor.ts       # Response modifikasyonu
+│   │   ├── server.ts          # Main ApiDouble class
+│   │   ├── proxy-engine.ts    # Request handling and forwarding
+│   │   └── matcher.ts         # Smart request matching
 │   ├── storage/
-│   │   ├── base.ts              # Storage interface
-│   │   ├── lowdb.adapter.ts     # JSON tabanlı storage
-│   │   └── sqlite.adapter.ts    # SQLite storage
-│   ├── generators/
-│   │   ├── faker.service.ts     # Dinamik veri üretimi
-│   │   └── schema-inferrer.ts   # Response'dan şema çıkarımı
-│   ├── chaos/
-│   │   ├── latency.ts           # Gecikme simülasyonu
-│   │   └── error-injector.ts    # Hata enjeksiyonu
+│   │   ├── base.ts            # Storage interface
+│   │   └── lowdb.adapter.ts   # JSON-based storage
 │   ├── cli/
-│   │   └── commands.ts          # CLI komutları
-│   ├── dashboard/
-│   │   └── ...                  # React admin UI
-│   └── index.ts
+│   │   ├── index.ts           # CLI entry point
+│   │   └── commands.ts        # CLI command definitions
+│   ├── config/
+│   │   └── loader.ts          # Configuration loading
+│   ├── types/
+│   │   └── index.ts           # TypeScript interfaces
+│   └── index.ts               # Main export
 ├── tests/
-├── apidouble.config.yml
+│   ├── unit/                  # Unit tests
+│   └── integration/           # Integration tests
+├── scripts/
+│   ├── demo.js                # Feature demo script
+│   └── demo-proxy.js          # Proxy mode demo script
 └── package.json
 ```
 
 ---
 
-## Yol Haritası
+## Running the Demos
 
-### v1.0 — Temel Özellikler
+```bash
+# Build the project first
+npm run build
+
+# Run the main demo (custom routes, admin endpoints, storage)
+npm run demo
+
+# Run the proxy demo (record and playback)
+npm run demo:proxy
+```
+
+---
+
+## Technology Stack
+
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| Runtime | Node.js + TypeScript | Type safety and modern JS features |
+| Server | Express.js | HTTP server and routing |
+| Proxy | http-proxy-middleware | Request forwarding |
+| Storage | LowDB | JSON-based persistence |
+| CLI | Commander.js | Command-line interface |
+
+---
+
+## Roadmap
+
+### v1.0 — Core Features (Complete)
 - [x] Proxy mode (record)
 - [x] Mock mode (playback)
 - [x] LowDB storage
 - [x] CLI interface
-- [x] Basic request matching
+- [x] Smart request matching
+- [x] Admin endpoints
+- [x] Configuration file support
 
-### v1.1 — Gelişmiş Özellikler
-- [ ] Intercept mode
+### v1.1 — Advanced Features
+- [ ] Intercept mode (response modification)
 - [ ] Chaos engine (latency simulation)
 - [ ] SQLite storage option
-- [ ] Smart request matching (body & headers)
+- [ ] Body-aware request matching
 
 ### v1.2 — Developer Experience
 - [ ] Admin dashboard UI
-- [ ] Faker.js integration
-- [ ] Schema inference from responses
+- [ ] Faker.js integration for dynamic data
 - [ ] Hot reload for routes
 
 ### v2.0 — Enterprise Features
 - [ ] WebSocket support
 - [ ] GraphQL mocking
-- [ ] Team sharing (cloud sync)
-- [ ] VS Code extension
+- [ ] Team sharing
 
 ---
 
-## Lisans
+## License
 
-MIT License — Detaylar için [LICENSE](LICENSE) dosyasına bakın.
-
----
-
-<p align="center">
-  <b>ApiDouble</b> ile backend beklemeden geliştirmeye devam edin! 🚀
-</p>
+MIT License — see [LICENSE](LICENSE) for details.
