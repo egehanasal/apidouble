@@ -24,4 +24,18 @@ export {
   type ErrorRule,
   type InjectedError,
 } from './chaos/index.js';
+export {
+  FakerService,
+  fakerService,
+  fakerArray,
+  template,
+  FakerTemplates,
+  SchemaInferrer,
+  schemaInferrer,
+  type FakerContext,
+  type FakerServiceConfig,
+  type InferredSchema,
+  type InferredField,
+  type TypeInfo,
+} from './generators/index.js';
 export * from './config/index.js';
