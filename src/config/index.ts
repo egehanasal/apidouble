@@ -7,3 +7,9 @@ export {
   type ConfigFile,
   type CliOptions,
 } from './loader.js';
+export {
+  HotReloadService,
+  createHotReload,
+  type HotReloadConfig,
+  type HotReloadStats,
+} from './hot-reload.js';

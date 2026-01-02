@@ -100,7 +100,7 @@ export async function loadConfigFile(filePath: string): Promise<ConfigFile> {
 /**
  * Convert config file structure to ApiDoubleConfig
  */
-function configFileToApiConfig(file: ConfigFile): Partial<ApiDoubleConfig> {
+export function configFileToApiConfig(file: ConfigFile): Partial<ApiDoubleConfig> {
   const config: Partial<ApiDoubleConfig> = {};
 
   if (file.server?.port !== undefined) {
