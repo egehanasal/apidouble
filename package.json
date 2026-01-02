@@ -25,7 +25,11 @@
     "lint": "eslint src/",
     "format": "prettier --write \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "demo": "node scripts/demo.js",
+    "demo:proxy": "node scripts/demo-proxy.js",
+    "demo:cli": "bash scripts/demo-cli.sh",
+    "start": "node dist/cli/index.js start"
   },
   "keywords": [
     "api",
