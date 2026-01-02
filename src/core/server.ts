@@ -13,6 +13,8 @@ import { SQLiteStorage } from '../storage/sqlite.adapter.js';
 import { ProxyEngine } from './proxy-engine.js';
 import type { InterceptHandler, Interceptor } from './interceptor.js';
 import { ChaosEngine, type LatencyConfig, type ErrorConfig } from '../chaos/index.js';
+import { FakerService } from '../generators/index.js';
+import { createDashboardMiddleware, createChaosApiMiddleware } from '../dashboard/index.js';
 
 export type RouteHandler = (req: {
   params: Record<string, string>;
@@ -36,6 +38,7 @@ export class ApiDouble {
   private storage: Storage;
   private engine: ProxyEngine | null = null;
   private chaos: ChaosEngine;
+  private faker: FakerService;
   private events: ApiDoubleEvents;
   private customRoutes: Map<string, { method: string; path: string; handler: RouteHandler }> = new Map();
   private isRunning = false;
@@ -59,6 +62,7 @@ export class ApiDouble {
       latency: this.config.chaos?.latency,
       errorRate: this.config.chaos?.errorRate,
     });
+    this.faker = new FakerService();
 
     this.setupMiddleware();
   }
@@ -175,6 +179,17 @@ export class ApiDouble {
       }
     });
 
+    // Admin dashboard
+    this.app.get('/__admin', createDashboardMiddleware());
+
+    // Chaos API endpoints
+    const chaosApi = createChaosApiMiddleware(
+      () => this.chaos.getStats(),
+      (enabled: boolean) => (enabled ? this.chaos.enable() : this.chaos.disable())
+    );
+    this.app.get('/__chaos', chaosApi.get);
+    this.app.post('/__chaos', chaosApi.post);
+
     // Mode switching endpoint
     this.app.post('/__mode', (req: Request, res: Response) => {
       const { mode, target } = req.body as { mode?: ServerMode; target?: string };
@@ -242,7 +257,14 @@ export class ApiDouble {
           }
         }
 
-        res.json(result.body);
+        // Process faker templates in response body
+        const context = this.faker.createContext(
+          req.params as Record<string, string>,
+          req.query as Record<string, string>
+        );
+        const processedBody = this.faker.process(result.body, context);
+
+        res.json(processedBody);
       } catch (error) {
         res.status(500).json({
           error: 'Route handler error',
@@ -471,5 +493,19 @@ export class ApiDouble {
    */
   getChaosEngine(): ChaosEngine {
     return this.chaos;
+  }
+
+  /**
+   * Get the faker service instance
+   */
+  getFakerService(): FakerService {
+    return this.faker;
+  }
+
+  /**
+   * Set faker seed for reproducible data
+   */
+  setFakerSeed(seed: number): void {
+    this.faker.setSeed(seed);
   }
 }
