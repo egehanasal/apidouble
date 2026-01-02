@@ -334,6 +334,147 @@ console.log(stats);
 
 ---
 
+## Dynamic Data with Faker.js
+
+Generate realistic mock data using Faker.js templates in your route handlers:
+
+```typescript
+import { ApiDouble, FakerTemplates, fakerArray } from 'apidouble';
+
+const server = new ApiDouble({ port: 3001, mode: 'mock' });
+
+// Use faker templates in responses
+server.route('GET', '/api/user', () => ({
+  body: {
+    id: '{{faker.string.uuid}}',
+    name: '{{faker.person.fullName}}',
+    email: '{{faker.internet.email}}',
+    avatar: '{{faker.image.avatar}}',
+    createdAt: '{{faker.date.recent}}'
+  }
+}));
+
+// Use built-in templates
+server.route('GET', '/api/profile', () => ({
+  body: FakerTemplates.user
+}));
+
+// Generate arrays of fake data
+server.route('GET', '/api/users', () => ({
+  body: fakerArray(10, (index, faker) => ({
+    id: index + 1,
+    name: faker.person.fullName(),
+    email: faker.internet.email()
+  }))
+}));
+
+// Access request params in templates
+server.route('GET', '/api/users/:id', () => ({
+  body: {
+    id: '{{param.id}}',
+    name: '{{faker.person.fullName}}'
+  }
+}));
+
+await server.start();
+```
+
+### Reproducible Data
+
+Set a seed for consistent, reproducible fake data:
+
+```typescript
+server.setFakerSeed(12345);
+// Now all faker templates will produce the same values
+```
+
+---
+
+## Schema Inference
+
+Automatically generate TypeScript interfaces from recorded API responses:
+
+```typescript
+import { SchemaInferrer } from 'apidouble';
+
+const inferrer = new SchemaInferrer();
+
+// Infer from a single sample
+const sample = {
+  id: '550e8400-e29b-41d4-a716-446655440000',
+  name: 'John Doe',
+  email: 'john@example.com',
+  age: 30
+};
+
+const schema = inferrer.inferFromSample(sample, 'User');
+
+console.log(schema.typescript);
+// interface User {
+//   id: string;
+//   name: string;
+//   email: string;
+//   age: number;
+// }
+
+console.log(schema.fakerTemplate);
+// {
+//   id: '{{faker.string.uuid}}',
+//   name: '{{faker.person.fullName}}',
+//   email: '{{faker.internet.email}}',
+//   age: '{{faker.number.int(1000)}}'
+// }
+```
+
+---
+
+## Admin Dashboard
+
+Access the web-based admin dashboard at `/__admin`:
+
+```bash
+# Start server
+apidouble start --mode mock --port 3001
+
+# Open dashboard in browser
+open http://localhost:3001/__admin
+```
+
+**Dashboard Features:**
+- View server status and configuration
+- Switch between proxy/mock/intercept modes
+- Enable/disable chaos engineering
+- View and delete recorded mocks
+- Real-time statistics
+
+---
+
+## Hot Reload
+
+Watch config files for changes and automatically reload:
+
+```typescript
+import { HotReloadService } from 'apidouble';
+
+const hotReload = new HotReloadService({
+  configPaths: ['./apidouble.config.yml'],
+  onReload: (config) => {
+    console.log('Config reloaded:', config);
+    // Apply new configuration
+  },
+  onChange: (path) => {
+    console.log('File changed:', path);
+  }
+});
+
+hotReload.start();
+
+// Later: stop watching
+await hotReload.stop();
+```
+
+---
+
 ## Storage Options
 
 ### LowDB (Default)
@@ -571,11 +712,11 @@ npm run demo:proxy
 - [x] SQLite storage option
 - [x] Body-aware request matching
 
-### v1.2 — Developer Experience
-- [ ] Admin dashboard UI
-- [ ] Faker.js integration for dynamic data
-- [ ] Hot reload for routes
-- [ ] Schema inference from recorded responses
+### v1.2 — Developer Experience ✅
+- [x] Admin dashboard UI
+- [x] Faker.js integration for dynamic data
+- [x] Hot reload for config files
+- [x] Schema inference from recorded responses
 
 ### v2.0 — Enterprise Features
 - [ ] WebSocket support
